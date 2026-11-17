@@ -1,0 +1,122 @@
+/* Theme tokens: Dark Charcoal Retro Studio (Default), XP Steel Light, and High-Contrast Pixel */
+
+:root,
+html.theme-dark {
+  --bg-canvas: #14161a;
+  --bg-shell: #1b1e24;
+  --bg-panel: #22262e;
+  --bg-panel-alt: #282d37;
+  --bg-control: #2b303b;
+  --bg-control-hover: #343a47;
+  --bg-control-active: #1d4ed8;
+  --bg-input: #171a20;
+  --bg-menu: #242830;
+
+  --border-hairline: #343946;
+  --border-strong: #464d5e;
+  --bevel-light: rgba(255, 255, 255, 0.08);
+  --bevel-dark: rgba(0, 0, 0, 0.45);
+
+  --text-primary: #eef1f6;
+  --text-secondary: #a8b0c0;
+  --text-muted: #768094;
+  --text-on-accent: #ffffff;
+
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-subtle: rgba(59, 130, 246, 0.16);
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+
+  --checker-a: #1e2128;
+  --checker-b: #262a33;
+  --ruler-bg: #1c1f26;
+  --ruler-tick: #596377;
+  --ruler-text: #8c96aa;
+
+  --shadow-window: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-menu: 0 8px 20px rgba(0, 0, 0, 0.5);
+  --radius-sm: 2px;
+  --radius-md: 4px;
+}
+
+html.theme-light {
+  --bg-canvas: #d6d3c4;
+  --bg-shell: #ece9d8;
+  --bg-panel: #f4f2e8;
+  --bg-panel-alt: #e6e3d3;
+  --bg-control: #f9f8f3;
+  --bg-control-hover: #ffffff;
+  --bg-control-active: #245edc;
+  --bg-input: #ffffff;
+  --bg-menu: #f6f4ec;
+
+  --border-hairline: #aca899;
+  --border-strong: #7f9db9;
+  --bevel-light: rgba(255, 255, 255, 0.9);
+  --bevel-dark: rgba(0, 0, 0, 0.18);
+
+  --text-primary: #1a1c20;
+  --text-secondary: #454952;
+  --text-muted: #6c7079;
+  --text-on-accent: #ffffff;
+
+  --accent: #245edc;
+  --accent-hover: #1a4bb8;
+  --accent-subtle: rgba(36, 94, 220, 0.14);
+  --success: #16803c;
+  --warning: #b45309;
+  --danger: #dc2626;
+
+  --checker-a: #e2e0d6;
+  --checker-b: #f3f2ec;
+  --ruler-bg: #e5e2d5;
+  --ruler-tick: #787467;
+  --ruler-text: #454952;
+
+  --shadow-window: 0 10px 28px rgba(0, 0, 0, 0.22);
+  --shadow-menu: 2px 3px 8px rgba(0, 0, 0, 0.22);
+  --radius-sm: 2px;
+  --radius-md: 3px;
+}
+
+html.theme-pixel {
+  --bg-canvas: #0f1116;
+  --bg-shell: #171a21;
+  --bg-panel: #1d212a;
+  --bg-panel-alt: #252a36;
+  --bg-control: #2a303e;
+  --bg-control-hover: #353d4e;
+  --bg-control-active: #0ea5e9;
+  --bg-input: #111319;
+  --bg-menu: #1d212a;
+
+  --border-hairline: #3b4457;
+  --border-strong: #586580;
+  --bevel-light: rgba(255, 255, 255, 0.1);
+  --bevel-dark: rgba(0, 0, 0, 0.6);
+
+  --text-primary: #f8fafc;
+  --text-secondary: #b6c2d6;
+  --text-muted: #7f8ca3;
+  --text-on-accent: #ffffff;
+
+  --accent: #0ea5e9;
+  --accent-hover: #38bdf8;
+  --accent-subtle: rgba(14, 165, 233, 0.18);
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #f43f5e;
+
+  --checker-a: #161922;
+  --checker-b: #1e232e;
+  --ruler-bg: #151820;
+  --ruler-tick: #5c6882;
+  --ruler-text: #9aa7c0;
+
+  --shadow-window: 0 12px 32px rgba(0, 0, 0, 0.65);
+  --shadow-menu: 0 8px 20px rgba(0, 0, 0, 0.6);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+}

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en" class="theme-dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KVectRip — Offline Texture Extraction &amp; Atlas Studio</title>
+    <meta
+      name="description"
+      content="Professional offline texture extraction, perspective correction, seamless texture synthesis, pixel-art quantization, and texture atlas generation studio."
+    />
+    <meta property="og:title" content="KVectRip — Offline Texture Extraction &amp; Atlas Studio" />
+    <meta
+      property="og:description"
+      content="Professional offline texture extraction, perspective correction, seamless texture synthesis, pixel-art quantization, and texture atlas generation studio."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="/css/main.css" />
+  </head>
+  <body>
+    <div id="app-root" class="studio-shell">
+      <!-- Top Menu Bar -->
+      <header id="top-menubar" class="menubar" role="menubar" aria-label="Application menu"></header>
+
+      <!-- Main Studio Middle Region -->
+      <div id="studio-middle" class="studio-middle">
+        <!-- Left Collapsible Toolbar -->
+        <aside id="left-toolbar" class="left-toolbar" aria-label="Tools"></aside>
+
+        <!-- Center Canvas Workspace -->
+        <main id="center-workspace" class="center-workspace">
+          <!-- Open Image Tabs & Quick View Controls -->
+          <div id="workspace-topbar" class="workspace-topbar"></div>
+
+          <!-- Layered Canvas Viewport & Empty Dropzone -->
+          <div id="canvas-viewport" class="canvas-viewport" tabindex="0">
+            <canvas id="ruler-top" class="ruler-top" aria-hidden="true"></canvas>
+            <canvas id="ruler-left" class="ruler-left" aria-hidden="true"></canvas>
+            <div id="canvas-stage" class="canvas-stage">
+              <canvas id="base-canvas" class="base-canvas"></canvas>
+              <canvas id="overlay-canvas" class="overlay-canvas"></canvas>
+            </div>
+
+            <!-- Empty State Dropzone -->
+            <div id="empty-dropzone" class="empty-dropzone">
+              <div class="dropzone-card">
+                <div class="dropzone-icon" id="dropzone-icon-slot"></div>
+                <h1 class="dropzone-title">KVectRip Studio</h1>
+                <p class="dropzone-subtitle">
+                  Drop reference images here, paste from clipboard, or browse local files to begin polygon extraction.
+                </p>
+                <div class="dropzone-actions">
+                  <button type="button" id="btn-dropzone-open" class="btn btn-primary">Open Reference Image</button>
+                  <button type="button" id="btn-dropzone-project" class="btn btn-secondary">Load Project (.json)</button>
+                </div>
+                <p class="dropzone-formats">
+                  Supported offline formats: PNG · JPG / JPEG · WebP · BMP · GIF
+                </p>
+              </div>
+            </div>
+
+            <!-- Floating Canvas HUD (Zoom / Coordinates / Snap) -->
+            <div id="canvas-hud" class="canvas-hud" aria-label="Canvas coordinates and zoom"></div>
+          </div>
+        </main>
+
+        <!-- Vertical Splitter -->
+        <div id="splitter-right" class="splitter splitter-v" role="separator" aria-orientation="vertical" title="Resize inspector panel"></div>
+
+        <!-- Right Collapsible Properties Panel -->
+        <aside id="right-inspector" class="right-inspector" aria-label="Properties inspector"></aside>
+      </div>
+
+      <!-- Horizontal Splitter -->
+      <div id="splitter-bottom" class="splitter splitter-h" role="separator" aria-orientation="horizontal" title="Resize bottom panel"></div>
+
+      <!-- Bottom Collapsible Library & Atlas Panel -->
+      <section id="bottom-panel" class="bottom-panel" aria-label="Texture library and atlas"></section>
+
+      <!-- Floating Windows Layer (Per-Ripper Previews, Floating Atlas Window) -->
+      <div id="floating-layer" class="floating-layer"></div>
+
+      <!-- Modals & Dialogs Layer -->
+      <div id="modal-layer" class="modal-layer" hidden></div>
+
+      <!-- Toast Notifications -->
+      <div id="toast-layer" class="toast-layer" aria-live="polite"></div>
+
+      <!-- Hidden File Inputs -->
+      <input type="file" id="file-input-images" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,image/png,image/jpeg,image/webp,image/bmp,image/gif" multiple hidden />
+      <input type="file" id="file-input-replace" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,image/png,image/jpeg,image/webp,image/bmp,image/gif" hidden />
+      <input type="file" id="file-input-project" accept=".json,application/json" hidden />
+    </div>
+
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>

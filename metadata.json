@@ -1,0 +1,6 @@
+{
+  "name": "Texture Ripper",
+  "description": "Professional offline texture extraction, perspective correction, seamless texture synthesis, pixel-art quantization, and texture atlas generation studio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
