@@ -28,6 +28,30 @@ export const MATERIAL_CATEGORIES = [
   'Other',
 ];
 
+export function createDefaultAtlasPostFx() {
+  return {
+    enabled: false,
+    sharpness: 0,
+    bloom: 0,
+    exposure: 0,
+    contrast: 0,
+    saturation: 0,
+    gamma: 1.0,
+    chromaticAberration: 0,
+    vignette: 0,
+    grain: 0,
+    edgeSoften: 0,
+  };
+}
+
+export function createDefaultRipperFx() {
+  return {
+    filter: 'none',
+    filterIntensity: 1,
+    post: createDefaultAtlasPostFx(),
+  };
+}
+
 export const state = {
   projectName: 'Untitled Project',
   theme: 'dark', // 'dark' | 'light' | 'pixel'
@@ -107,6 +131,11 @@ export const state = {
     powerOfTwo: true,
     square: false,
     autoSize: true,
+    arrayMode: false, // Default OFF: when ON, X/Y/Full scale repeats tiles instead of stretching
+    arrayScale: 1, // Global uniform scale/array multiplier
+    arrayScaleX: 1, // Global horizontal X scale/array multiplier
+    arrayScaleY: 1, // Global vertical Y scale/array multiplier
+    gizmoScaleMode: 'both', // 'whole' | 'array' | 'both' (Whole + Array combined when dragging Free Move Gizmo)
     transparent: true,
     bgColor: '#000000',
     showBounds: true,
@@ -116,9 +145,20 @@ export const state = {
     snapEnabled: true,
     snapGridSize: 16,
     selectedPlacementId: null,
-    manualOverrides: {}, // ripperId -> { x, y, innerW, innerH, angleDeg }
-    items: [], // { ripperId, scale, locked, customW, customH, order }
+    manualOverrides: {}, // ripperId -> { x, y, innerW, innerH, angleDeg, tileScaleX, tileScaleY }
+    items: [], // { ripperId, scale, scaleX, scaleY, tileScale, tileScaleX, tileScaleY, arrayEnabled, gizmoScaleMode, locked, customW, customH, order }
     packedResult: null, // { width, height, placements, efficiency, cleanCanvas, previewCanvas }
+    fx: {
+      subTab: 'packing', // 'packing' | 'fx'
+      floating: false,
+      minimized: false,
+      floatRect: { x: 88, y: 86, width: 332, height: 480 },
+      scope: 'overall', // 'overall' | 'item'
+      selectedItemId: null,
+      overallFilter: 'none',
+      overallIntensity: 1,
+      post: createDefaultAtlasPostFx(),
+    },
     view: {
       zoom: 1,
       panX: 0,
@@ -135,6 +175,7 @@ export const state = {
     splitCompare: false,
     splitRatio: 0.5,
     stagePreview: 'seamless', // 'seamless' | 'final'
+    applyFx: true,
     tool: 'offset', // 'offset' | 'clone'
     brushRadius: 14,
     brushStrength: 0.9,

@@ -1,5 +1,5 @@
 // Independent Texture Ripper model factory
-import { state } from '../core/app-state.js';
+import { state, createDefaultAtlasPostFx, createDefaultRipperFx } from '../core/app-state.js';
 import { computeNaturalQuadSize } from '../canvas/perspective-engine.js';
 
 let ripperCounter = 1;
@@ -71,6 +71,14 @@ export function createTextureRipper({ sourceImageId, points, name = null, catego
       dither: 'none', // 'none' | 'bayer' | 'floyd'
     },
     clonePatches: [],
+    previewTransform: {
+      offsetU: 0,
+      offsetV: 0,
+      repeatX: 1,
+      repeatY: 1,
+      applyFx: true,
+    },
+    fx: createDefaultRipperFx(),
     cachedStages: {
       original: null, // HTMLCanvasElement
       perspective: null,
@@ -79,6 +87,21 @@ export function createTextureRipper({ sourceImageId, points, name = null, catego
       thumbnailUrl: '',
     },
   };
+}
+
+export function ensureRipperFx(ripper) {
+  if (!ripper) return null;
+  if (!ripper.fx) {
+    ripper.fx = createDefaultRipperFx();
+  } else {
+    if (!ripper.fx.filter) ripper.fx.filter = 'none';
+    if (ripper.fx.filterIntensity == null) ripper.fx.filterIntensity = 1;
+    ripper.fx.post = {
+      ...createDefaultAtlasPostFx(),
+      ...(ripper.fx.post || {}),
+    };
+  }
+  return ripper.fx;
 }
 
 export function resetRipperSeamlessDefaults(ripper) {

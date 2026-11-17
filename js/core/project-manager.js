@@ -67,7 +67,18 @@ class ProjectManager {
         color: { ...r.color },
         pixelArt: { ...r.pixelArt },
         clonePatches: r.clonePatches.map((cp) => ({ ...cp })),
+        previewTransform: r.previewTransform
+          ? { applyFx: true, ...r.previewTransform }
+          : { offsetU: 0, offsetV: 0, repeatX: 1, repeatY: 1, applyFx: true },
+        fx: r.fx
+          ? {
+              filter: r.fx.filter || 'none',
+              filterIntensity: r.fx.filterIntensity ?? 1,
+              post: { ...(r.fx.post || {}) },
+            }
+          : null,
       })),
+      seamlessEditorFx: !!state.seamlessEditor.applyFx,
       atlas: {
         algorithm: state.atlas.algorithm,
         aspectRatio: state.atlas.aspectRatio,
@@ -79,6 +90,11 @@ class ProjectManager {
         powerOfTwo: state.atlas.powerOfTwo,
         square: state.atlas.square,
         autoSize: state.atlas.autoSize,
+        arrayMode: !!state.atlas.arrayMode,
+        arrayScale: state.atlas.arrayScale ?? 1,
+        arrayScaleX: state.atlas.arrayScaleX ?? 1,
+        arrayScaleY: state.atlas.arrayScaleY ?? 1,
+        gizmoScaleMode: state.atlas.gizmoScaleMode || 'both',
         transparent: state.atlas.transparent,
         bgColor: state.atlas.bgColor,
         showBounds: state.atlas.showBounds,
@@ -89,6 +105,12 @@ class ProjectManager {
         snapGridSize: state.atlas.snapGridSize,
         manualOverrides: JSON.parse(JSON.stringify(state.atlas.manualOverrides || {})),
         items: state.atlas.items.map((item) => ({ ...item })),
+        fx: {
+          scope: state.atlas.fx.scope,
+          overallFilter: state.atlas.fx.overallFilter,
+          overallIntensity: state.atlas.fx.overallIntensity,
+          post: { ...state.atlas.fx.post },
+        },
       },
     };
   }

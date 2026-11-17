@@ -326,7 +326,7 @@
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 40;
+  z-index: 52;
 }
 
 .floating-window {
@@ -339,8 +339,17 @@
   display: flex;
   flex-direction: column;
   min-width: 280px;
-  min-height: 260px;
+  min-height: 240px;
   overflow: hidden;
+}
+
+.floating-window.minimized {
+  height: 28px !important;
+  min-height: 28px !important;
+}
+
+.floating-window.minimized > :not(.floating-titlebar) {
+  display: none !important;
 }
 
 .floating-titlebar {

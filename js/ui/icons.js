@@ -42,4 +42,12 @@ export const ICONS = {
   export: `<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2V10M8 2L5 5M8 2L11 5M3 10.5V13.5H13V10.5" stroke="currentColor" stroke-width="1.4"/></svg>`,
 
   edit: `<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10.8 2.5L13.5 5.2L5.5 13.2L2.5 13.5L2.8 10.5L10.8 2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="miter"/><path d="M9.2 4.1L11.9 6.8" stroke="currentColor" stroke-width="1.2"/></svg>`,
+
+  minimize: `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 8.5H10" stroke="currentColor" stroke-width="1.5"/></svg>`,
+
+  restoreWin: `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="3" width="8" height="7" stroke="currentColor" stroke-width="1.3"/><path d="M2 5H10" stroke="currentColor" stroke-width="1.3"/></svg>`,
+
+  popout: `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M7 2H10V5M10 2L5.5 6.5M5 3H2.5V9.5H9V7" stroke="currentColor" stroke-width="1.3"/></svg>`,
+
+  dock: `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="2" width="9" height="8" stroke="currentColor" stroke-width="1.3"/><path d="M5 2V10" stroke="currentColor" stroke-width="1.3"/><path d="M8.5 6H6.2M6.2 6L7.3 4.8M6.2 6L7.3 7.2" stroke="currentColor" stroke-width="1.2"/></svg>`,
 };

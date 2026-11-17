@@ -195,15 +195,20 @@
 .preview-canvas-area {
   position: relative;
   flex: 1 1 auto;
-  min-height: 160px;
+  min-height: 150px;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  touch-action: none;
+  user-select: none;
 }
 
 .preview-canvas-area canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
   display: block;
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-menu);
 }
 
 .preview-split-line {
@@ -637,5 +642,233 @@
   transform-origin: 0 0;
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-menu);
+}
+
+/* Atlas Sidebar Sub-Tabs & Included Item Array / X-Y Scaling Controls */
+.atlas-subtab-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-hairline);
+  flex-shrink: 0;
+}
+
+.atlas-item-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px 6px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+}
+
+.atlas-item-card.selected-item {
+  border-color: var(--accent);
+}
+
+.atlas-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.atlas-item-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atlas-item-fx-note {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.atlas-item-scales {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.atlas-scale-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.atlas-scale-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+}
+
+.atlas-scale-cell input[type='number'] {
+  width: 44px;
+  min-width: 0;
+  height: 18px;
+  padding: 1px 3px;
+  font-size: 10px;
+}
+
+.atlas-scale-cell input[type='range'] {
+  width: 100%;
+  height: 14px;
+}
+
+.atlas-array-box {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+
+.atlas-slider-row {
+  display: grid;
+  grid-template-columns: 44px 1fr 40px;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* Atlas FX & Shaders Panel (shared docked sub-tab & floating window body) */
+.fx-panel-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fx-floating-body {
+  padding: 8px;
+}
+
+.fx-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.fx-filter-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 5px 7px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.fx-filter-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-control);
+}
+
+.fx-filter-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.fx-filter-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fx-filter-cat {
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Floating Texture Preview Transform / Linked X-Y & U-V Panel */
+.fp-uv-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px 8px;
+  background: var(--bg-panel-alt);
+  border-bottom: 1px solid var(--border-hairline);
+  flex-shrink: 0;
+}
+
+.fp-uv-row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.fp-uv-repeat-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.fp-uv-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fp-uv-lbl {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.fp-uv-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.fp-uv-num {
+  width: 54px;
+  height: 20px;
+  padding: 1px 4px;
+  font-size: 10px;
+}
+
+.insp-preview-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
 }
 

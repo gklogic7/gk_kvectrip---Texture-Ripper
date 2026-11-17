@@ -8,13 +8,16 @@ export function buildAtlasMetadata(packedResult) {
   const pad = state.atlas.padding;
 
   return {
-    generator: 'Texture Ripper',
+    generator: 'KVectRip',
     exportedAt: new Date().toISOString(),
     atlas: {
       width: atlasW,
       height: atlasH,
       aspectRatio: state.atlas.aspectRatio || 'auto',
       algorithm: state.atlas.algorithm,
+      arrayMode: !!state.atlas.arrayMode,
+      overallFilter: state.atlas.fx?.overallFilter || 'none',
+      postProcessing: state.atlas.fx?.post?.enabled ? { ...state.atlas.fx.post } : null,
       padding: pad,
       spacing: state.atlas.spacing,
       efficiencyPercent: packedResult.efficiency,

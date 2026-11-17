@@ -90,7 +90,13 @@ export class CanvasManager {
     this.overlayCanvas.addEventListener('pointerdown', (e) => {
       this.viewport.focus();
       this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      this.overlayCanvas.setPointerCapture(e.pointerId);
+      if (this.overlayCanvas.isConnected && e.pointerId != null) {
+        try {
+          this.overlayCanvas.setPointerCapture(e.pointerId);
+        } catch {
+          // Ignore InvalidStateError for synthetic or inactive pointers
+        }
+      }
 
       // Two-finger pinch zoom on touch
       if (this.activePointers.size === 2) {

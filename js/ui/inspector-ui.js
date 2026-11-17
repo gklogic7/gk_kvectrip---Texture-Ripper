@@ -13,10 +13,11 @@ import { history } from '../core/history-manager.js';
 import { projectManager } from '../core/project-manager.js';
 import { computeNaturalQuadSize } from '../canvas/perspective-engine.js';
 import { textureManager } from '../texture/texture-manager.js';
-import { resetRipperSeamlessDefaults } from '../texture/texture-ripper.js';
+import { ensureRipperFx, resetRipperSeamlessDefaults } from '../texture/texture-ripper.js';
+import { applyRipperFxToCanvas } from '../atlas/atlas-fx-engine.js';
 import { exportRipperStage } from '../export/image-exporter.js';
 import { ICONS } from './icons.js';
-import { floatingPreviews } from './preview-window.js';
+import { floatingPreviews, renderWrappedTiledCanvas } from './preview-window.js';
 
 export class InspectorUI {
   constructor() {
@@ -37,6 +38,16 @@ export class InspectorUI {
       if (r && r.id === state.activeRipperId) {
         this._drawMiniPreview(r);
       }
+    });
+    events.on('preview:transformChanged', ({ ripperId, source } = {}) => {
+      if (source === 'inspector' || ripperId !== state.activeRipperId) return;
+      const active = getActiveRipper();
+      if (active) this._drawMiniPreview(active);
+    });
+    events.on('ripper:fxChanged', ({ ripperId } = {}) => {
+      if (ripperId && ripperId !== state.activeRipperId) return;
+      const active = getActiveRipper();
+      if (active) this._drawMiniPreview(active);
     });
     events.on('worker:progress', ({ ripperId, progress, stageLabel, done }) => {
       if (ripperId !== state.activeRipperId) return;
@@ -181,6 +192,10 @@ export class InspectorUI {
         </div>
         <div class="mini-preview-box checkerboard-bg">
           <canvas id="insp-mini-canvas"></canvas>
+        </div>
+        <div class="insp-preview-meta">
+          <span class="mono" id="insp-preview-transform-info">1×1 · X:0px Y:0px (U:0.00 V:0.00)</span>
+          <button type="button" class="btn btn-sm" id="insp-uv-reset" title="Reset preview X/Y, U/V, and Repeat to 1×1">Reset UV</button>
         </div>
         <div class="worker-progress" id="insp-progress" style="display:none">
           <span id="insp-progress-label">Processing</span>
@@ -372,13 +387,40 @@ export class InspectorUI {
   _drawMiniPreview(ripper) {
     const canvas = this.el.querySelector('#insp-mini-canvas');
     if (!canvas) return;
-    const src = ripper.cachedStages?.final || ripper.cachedStages?.perspective;
-    if (!src) return;
-    canvas.width = src.width;
-    canvas.height = src.height;
+    const rawSrc = ripper.cachedStages?.final || ripper.cachedStages?.perspective;
+    if (!rawSrc) return;
+
+    const pt = ripper.previewTransform || { offsetU: 0, offsetV: 0, repeatX: 1, repeatY: 1, applyFx: true };
+    const ripFx = ensureRipperFx(ripper);
+    const fxActive = pt.applyFx !== false && ((ripFx.filter && ripFx.filter !== 'none') || !!ripFx.post?.enabled);
+    const src = fxActive ? applyRipperFxToCanvas(rawSrc, ripFx) : rawSrc;
+
+    const u = Number(pt.offsetU) || 0;
+    const v = Number(pt.offsetV) || 0;
+    const rx = Math.max(0.25, Math.min(8, Number(pt.repeatX) || 1));
+    const ry = Math.max(0.25, Math.min(8, Number(pt.repeatY) || 1));
+    const hasTransform = Math.abs(u) >= 0.0005 || Math.abs(v) >= 0.0005 || Math.abs(rx - 1) >= 0.01 || Math.abs(ry - 1) >= 0.01;
+
+    const drawSource = hasTransform
+      ? renderWrappedTiledCanvas(src, u, v, rx, ry, !!ripper.pixelArt?.enabled) || src
+      : src;
+
+    canvas.width = drawSource.width;
+    canvas.height = drawSource.height;
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = !ripper.pixelArt?.enabled;
-    ctx.drawImage(src, 0, 0);
+    ctx.drawImage(drawSource, 0, 0);
+
+    const xPx = Math.round(u * rawSrc.width);
+    const yPx = Math.round(v * rawSrc.height);
+    const info = this.el.querySelector('#insp-preview-transform-info');
+    if (info) {
+      info.textContent = `${rx}×${ry} · X:${xPx}px Y:${yPx}px (U:${u.toFixed(2)} V:${v.toFixed(2)})${fxActive ? ' · FX' : ''}`;
+    }
+    const resetBtn = this.el.querySelector('#insp-uv-reset');
+    if (resetBtn) {
+      resetBtn.disabled = !hasTransform;
+    }
   }
 
   _wireLayerHandlers() {
@@ -490,6 +532,13 @@ export class InspectorUI {
     const body = this.el;
     body.querySelector('#insp-float-preview')?.addEventListener('click', () => floatingPreviews.openWindow(r.id));
     body.querySelector('#insp-export-tex')?.addEventListener('click', () => exportRipperStage(r, 'final', 'png', 0.92));
+    body.querySelector('#insp-uv-reset')?.addEventListener('click', () => {
+      const keepFx = r.previewTransform?.applyFx ?? true;
+      r.previewTransform = { offsetU: 0, offsetV: 0, repeatX: 1, repeatY: 1, applyFx: keepFx };
+      this._drawMiniPreview(r);
+      events.emit('preview:transformChanged', { ripperId: r.id, source: 'inspector' });
+      projectManager.scheduleAutosave();
+    });
     body.querySelector('#insp-cancel-job')?.addEventListener('click', () => textureManager.cancelProcess(r.id));
 
     const emitSeamlessSync = (rip) => {

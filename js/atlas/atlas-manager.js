@@ -1,9 +1,16 @@
-// AtlasManager: ratio-aware packing (Auto, 1:1, 16:9, 9:16, 4:3, 3:4), Free-Move Gizmo support, and Grid+Edge snapping
+// AtlasManager: ratio-aware packing, Array Tile-Repeat scaling, Free-Move Gizmo, Overlay Filters & Post-FX stack
 import { state } from '../core/app-state.js';
 import { events } from '../core/event-manager.js';
 import { packMaxRects } from './maxrects-packer.js';
 import { packShelf } from './shelf-packer.js';
 import { packGuillotine } from './guillotine-packer.js';
+import {
+  buildPlacementSurface,
+  applyOverlayFilterToCanvas,
+  applyPostProcessingStack,
+  applyRipperFxToCanvas,
+} from './atlas-fx-engine.js';
+import { ensureRipperFx } from '../texture/texture-ripper.js';
 
 export const ATLAS_RATIOS = {
   auto: null,
@@ -44,6 +51,7 @@ function fitDimensionsToRatio(maxW, maxH, rw, rh) {
 class AtlasManager {
   constructor() {
     this._timer = null;
+    this._fxTimer = null;
     this.activeGuides = []; // [{ axis: 'x'|'y', pos: number }]
     events.on('ripper:processed', () => this.scheduleRebuild(120));
     events.on('rippers:changed', () => this.scheduleRebuild(80));
@@ -57,6 +65,14 @@ class AtlasManager {
     }, delay);
   }
 
+  scheduleFxRender(delay = 28) {
+    if (this._fxTimer) clearTimeout(this._fxTimer);
+    this._fxTimer = setTimeout(() => {
+      this._fxTimer = null;
+      this.renderAtlasCanvases();
+    }, delay);
+  }
+
   getActiveItems() {
     const items = [];
     const itemMap = new Map(state.atlas.items.map((it) => [it.ripperId, it]));
@@ -66,24 +82,53 @@ class AtlasManager {
       if (!canvas) continue;
 
       let itemCfg = itemMap.get(ripper.id);
+      const ripFx = ensureRipperFx(ripper);
       if (!itemCfg) {
         itemCfg = {
           ripperId: ripper.id,
           scale: 1,
+          scaleX: 1,
+          scaleY: 1,
+          tileScale: 1,
+          tileScaleX: 1,
+          tileScaleY: 1,
+          arrayEnabled: null,
+          gizmoScaleMode: null,
+          filter: 'none',
+          filterIntensity: 1,
           locked: false,
           customW: null,
           customH: null,
           order: state.atlas.items.length,
         };
         state.atlas.items.push(itemCfg);
+      } else {
+        if (itemCfg.scaleX == null) itemCfg.scaleX = 1;
+        if (itemCfg.scaleY == null) itemCfg.scaleY = 1;
+        if (itemCfg.tileScale == null) itemCfg.tileScale = 1;
+        if (itemCfg.tileScaleX == null) itemCfg.tileScaleX = 1;
+        if (itemCfg.tileScaleY == null) itemCfg.tileScaleY = 1;
+        if (itemCfg.arrayEnabled === undefined) itemCfg.arrayEnabled = null;
+        if (itemCfg.gizmoScaleMode === undefined) itemCfg.gizmoScaleMode = null;
+        if (itemCfg.filter && itemCfg.filter !== 'none' && ripFx.filter === 'none') {
+          ripFx.filter = itemCfg.filter;
+          ripFx.filterIntensity = itemCfg.filterIntensity ?? 1;
+        }
       }
+
+      const gFull = state.atlas.arrayScale ?? 1;
+      const gX = state.atlas.arrayScaleX ?? 1;
+      const gY = state.atlas.arrayScaleY ?? 1;
+      const uniform = (itemCfg.scale || 1) * gFull;
+      const sx = (itemCfg.scaleX || 1) * gX;
+      const sy = (itemCfg.scaleY || 1) * gY;
 
       const w = itemCfg.customW
         ? Math.max(8, Math.round(itemCfg.customW))
-        : Math.max(8, Math.round(canvas.width * (itemCfg.scale || 1)));
+        : Math.max(8, Math.round(canvas.width * uniform * sx));
       const h = itemCfg.customH
         ? Math.max(8, Math.round(itemCfg.customH))
-        : Math.max(8, Math.round(canvas.height * (itemCfg.scale || 1)));
+        : Math.max(8, Math.round(canvas.height * uniform * sy));
 
       items.push({
         ripperId: ripper.id,
@@ -93,6 +138,10 @@ class AtlasManager {
         h: h + state.atlas.padding * 2,
         innerW: w,
         innerH: h,
+        arrayEnabled: itemCfg.arrayEnabled,
+        gizmoScaleMode: itemCfg.gizmoScaleMode,
+        filter: ripFx.filter || 'none',
+        filterIntensity: ripFx.filterIntensity ?? 1,
         order: itemCfg.order ?? 0,
         locked: !!itemCfg.locked,
         pixelArt: !!ripper.pixelArt?.enabled,
@@ -363,9 +412,9 @@ class AtlasManager {
 
     const targetW = res.width;
     const targetH = res.height;
-    const pad = cfg.padding;
+    const itemCfgMap = new Map(cfg.items.map((it) => [it.ripperId, it]));
 
-    const cleanCanvas = document.createElement('canvas');
+    let cleanCanvas = document.createElement('canvas');
     cleanCanvas.width = targetW;
     cleanCanvas.height = targetH;
     const cctx = cleanCanvas.getContext('2d');
@@ -375,9 +424,48 @@ class AtlasManager {
       cctx.fillRect(0, 0, targetW, targetH);
     }
 
+    const ripperMap = new Map(state.rippers.map((r) => [r.id, r]));
     let usedArea = 0;
     for (const p of res.placements) {
       usedArea += p.packedW * p.packedH;
+      const itemCfg = itemCfgMap.get(p.ripperId);
+      const ripper = ripperMap.get(p.ripperId);
+      const ov = cfg.manualOverrides?.[p.ripperId];
+
+      const explicitArray =
+        itemCfg?.arrayEnabled !== null && itemCfg?.arrayEnabled !== undefined
+          ? !!itemCfg.arrayEnabled
+          : !!cfg.arrayMode;
+
+      const effMode = itemCfg?.gizmoScaleMode
+        ? itemCfg.gizmoScaleMode
+        : cfg.freeMoveGizmo
+        ? cfg.gizmoScaleMode || 'both'
+        : explicitArray
+        ? 'array'
+        : 'whole';
+
+      const useArray = effMode === 'whole' ? false : (cfg.freeMoveGizmo || explicitArray);
+      const baseTile = itemCfg?.tileScale || 1;
+      const tileScaleX = effMode === 'both' ? (ov?.tileScaleX ?? itemCfg?.tileScaleX ?? 1) * baseTile : baseTile;
+      const tileScaleY = effMode === 'both' ? (ov?.tileScaleY ?? itemCfg?.tileScaleY ?? 1) * baseTile : baseTile;
+
+      let tileSurface = buildPlacementSurface(
+        p.sourceCanvas,
+        p.innerW,
+        p.innerH,
+        useArray,
+        !!p.pixelArt,
+        tileScaleX,
+        tileScaleY
+      );
+
+      // Apply Per-Texture Overlay Filter & Per-Texture Post-Processing Stack stored on the Ripper
+      const ripFx = ripper ? ensureRipperFx(ripper) : null;
+      if (ripFx) {
+        tileSurface = applyRipperFxToCanvas(tileSurface, ripFx);
+      }
+
       const cx = p.x + p.packedW / 2;
       const cy = p.y + p.packedH / 2;
       const rad = ((p.angleDeg ?? (p.rotated ? 90 : 0)) * Math.PI) / 180;
@@ -386,8 +474,17 @@ class AtlasManager {
       cctx.imageSmoothingEnabled = !p.pixelArt;
       cctx.translate(cx, cy);
       cctx.rotate(rad);
-      cctx.drawImage(p.sourceCanvas, -p.innerW / 2, -p.innerH / 2, p.innerW, p.innerH);
+      cctx.drawImage(tileSurface, -p.innerW / 2, -p.innerH / 2, p.innerW, p.innerH);
       cctx.restore();
+    }
+
+    // Apply overall Atlas overlay filter + full Post-Processing Stack onto cleanCanvas (baked into exports)
+    const fx = cfg.fx;
+    if (fx?.overallFilter && fx.overallFilter !== 'none') {
+      cleanCanvas = applyOverlayFilterToCanvas(cleanCanvas, fx.overallFilter, fx.overallIntensity ?? 1);
+    }
+    if (fx?.post) {
+      cleanCanvas = applyPostProcessingStack(cleanCanvas, fx.post);
     }
 
     const previewCanvas = document.createElement('canvas');

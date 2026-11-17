@@ -11,12 +11,14 @@ import { history } from '../core/history-manager.js';
 import { projectManager } from '../core/project-manager.js';
 import { shortcuts } from '../core/shortcuts-manager.js';
 import { textureManager } from '../texture/texture-manager.js';
-import { resetRipperSeamlessDefaults } from '../texture/texture-ripper.js';
+import { ensureRipperFx, resetRipperSeamlessDefaults } from '../texture/texture-ripper.js';
 import { atlasManager } from '../atlas/atlas-manager.js';
-import { exportRipperStage } from '../export/image-exporter.js';
+import { applyRipperFxToCanvas } from '../atlas/atlas-fx-engine.js';
+import { canvasToBlob, exportRipperStage, triggerBlobDownload } from '../export/image-exporter.js';
 import { exportAtlasImage, exportAtlasMetadata, exportAtlasZipPackage } from '../atlas/atlas-exporter.js';
 import { ICONS } from './icons.js';
 import { floatingPreviews } from './preview-window.js';
+import { renderAtlasFxMarkup, wireAtlasFxHandlers, atlasFxWindow } from './atlas-fx-panel.js';
 
 export class BottomPanelUI {
   constructor() {
@@ -42,6 +44,12 @@ export class BottomPanelUI {
         this._updateSeamlessStatus();
       }
     });
+    events.on('ripper:fxChanged', () => {
+      if (state.bottomTab === 'seamless') {
+        this._drawSeamlessEditorPreview();
+        this._updateSeamlessStatus();
+      }
+    });
     events.on('atlas:updated', () => {
       if (state.bottomTab === 'atlas') {
         this._drawAtlasPreview();
@@ -53,6 +61,39 @@ export class BottomPanelUI {
     });
     events.on('bottom:tabChanged', () => this.render());
     events.on('panel:layoutChanged', () => this.render());
+    events.on('atlas:fxLayoutChanged', () => {
+      if (state.bottomTab === 'atlas') this.render();
+    });
+    events.on('atlas:fxUiSync', () => {
+      if (state.bottomTab !== 'atlas') return;
+      if (state.atlas.fx.subTab === 'fx' && !state.atlas.fx.floating) {
+        const fxDockHost = this.el.querySelector('#atl-fx-dock-host');
+        if (fxDockHost) {
+          if (!fxDockHost.contains(document.activeElement) || document.activeElement?.type !== 'range') {
+            fxDockHost.innerHTML = renderAtlasFxMarkup('dfx');
+            wireAtlasFxHandlers(fxDockHost, 'dfx', () => this._syncDockedAtlasFx());
+          }
+          this._updateAtlasStatus();
+          return;
+        }
+        if (!this._atlasDrag) {
+          this.render();
+        }
+      } else {
+        this._updateAtlasStatus();
+      }
+    });
+  }
+
+  _syncDockedAtlasFx() {
+    const fxDockHost = this.el.querySelector('#atl-fx-dock-host');
+    if (fxDockHost) {
+      fxDockHost.innerHTML = renderAtlasFxMarkup('dfx');
+      wireAtlasFxHandlers(fxDockHost, 'dfx', () => this._syncDockedAtlasFx());
+      this._updateAtlasStatus();
+    } else if (!this._atlasDrag) {
+      this.render();
+    }
   }
 
   _cleanupNav() {
@@ -322,6 +363,9 @@ export class BottomPanelUI {
     const res = a.packedResult;
     if (!res) return 'No textures packed';
     let base = `${res.width}×${res.height} · Ratio: ${a.aspectRatio} · Efficiency ${res.efficiency}% · ${res.placements.length} packed`;
+    if (a.arrayMode) base += ' · Array Repeat';
+    if (a.fx?.overallFilter && a.fx.overallFilter !== 'none') base += ` · FX: ${a.fx.overallFilter}`;
+    if (a.fx?.post?.enabled) base += ' · Post-FX';
     if (a.freeMoveGizmo && a.selectedPlacementId) {
       const sel = res.placements.find((p) => p.ripperId === a.selectedPlacementId);
       if (sel) {
@@ -338,11 +382,14 @@ export class BottomPanelUI {
 
   _renderAtlas() {
     const a = state.atlas;
+    const fx = a.fx;
+    const subTab = fx.floating ? 'packing' : fx.subTab || 'packing';
     const items = atlasManager.getActiveItems();
 
-    return `
-      <div class="atlas-workspace">
-        <div class="atlas-sidebar">
+    const sidebarBody =
+      subTab === 'fx'
+        ? `<div id="atl-fx-dock-host" class="fx-panel-scroll">${renderAtlasFxMarkup('dfx')}</div>`
+        : `
           <div class="section-heading">
             <span>Packing Settings</span>
             <button type="button" class="btn btn-sm btn-primary" id="atl-rebuild">Regenerate</button>
@@ -376,9 +423,40 @@ export class BottomPanelUI {
             <label class="check-label"><input type="checkbox" id="atl-rot" ${a.allowRotate ? 'checked' : ''} /> Rotate</label>
             <label class="check-label"><input type="checkbox" id="atl-pot" ${a.powerOfTwo ? 'checked' : ''} /> Power of 2</label>
             <label class="check-label"><input type="checkbox" id="atl-auto" ${a.autoSize ? 'checked' : ''} /> Auto-size</label>
-            <label class="check-label" title="Enable Move, Scale & Rotate Gizmo on Atlas canvas">
-              <input type="checkbox" id="atl-gizmo" ${a.freeMoveGizmo ? 'checked' : ''} /> Free Move Gizmo
+            <label class="check-label" title="When ON (default OFF), scaling X, Y, or Full repeats/extends tiles instead of stretching">
+              <input type="checkbox" id="atl-array" ${a.arrayMode ? 'checked' : ''} /> Array Extend
             </label>
+          </div>
+          <div class="atlas-array-box">
+            <div class="section-heading">
+              <span>Array Scale Sliders</span>
+              <button type="button" class="btn btn-sm" id="atl-arr-reset" title="Reset global array scale sliders to 1.00×">1× Reset</button>
+            </div>
+            <div class="atlas-slider-row">
+              <span>Full</span>
+              <input type="range" id="atl-arr-full" class="slider" min="0.25" max="4" step="0.05" value="${a.arrayScale ?? 1}" />
+              <span class="mono" id="atl-arr-full-val" style="text-align:right">${Number(a.arrayScale ?? 1).toFixed(2)}×</span>
+            </div>
+            <div class="atlas-slider-row">
+              <span>Scale X</span>
+              <input type="range" id="atl-arr-x" class="slider" min="0.25" max="4" step="0.05" value="${a.arrayScaleX ?? 1}" />
+              <span class="mono" id="atl-arr-x-val" style="text-align:right">${Number(a.arrayScaleX ?? 1).toFixed(2)}×</span>
+            </div>
+            <div class="atlas-slider-row">
+              <span>Scale Y</span>
+              <input type="range" id="atl-arr-y" class="slider" min="0.25" max="4" step="0.05" value="${a.arrayScaleY ?? 1}" />
+              <span class="mono" id="atl-arr-y-val" style="text-align:right">${Number(a.arrayScaleY ?? 1).toFixed(2)}×</span>
+            </div>
+            <div class="prop-row">
+              <label class="check-label" title="Enable Move, Scale (Alt=X/Y) &amp; Rotate Gizmo on Atlas canvas">
+                <input type="checkbox" id="atl-gizmo" ${a.freeMoveGizmo ? 'checked' : ''} /> Free Move Gizmo
+              </label>
+            </div>
+            <div class="segmented-control" title="How Free-Mode gizmo corner dragging scales the clicked texture">
+              <button type="button" class="seg-btn ${(a.gizmoScaleMode || 'both') === 'whole' ? 'active' : ''}" data-atl-gmode="whole">Whole</button>
+              <button type="button" class="seg-btn ${(a.gizmoScaleMode || 'both') === 'array' ? 'active' : ''}" data-atl-gmode="array">Array</button>
+              <button type="button" class="seg-btn ${(a.gizmoScaleMode || 'both') === 'both' ? 'active' : ''}" data-atl-gmode="both">Whole+Arr</button>
+            </div>
           </div>
           <div class="prop-row">
             <label class="check-label" title="Snap to Atlas Grid and Neighbor Texture Edges">
@@ -405,18 +483,70 @@ export class BottomPanelUI {
             ${items
               .map((it, idx) => {
                 const cfg = state.atlas.items.find((x) => x.ripperId === it.ripperId);
+                const rip = state.rippers.find((r) => r.id === it.ripperId);
+                const effArr =
+                  cfg?.arrayEnabled !== null && cfg?.arrayEnabled !== undefined
+                    ? !!cfg.arrayEnabled
+                    : !!a.arrayMode;
+                const isExplicitArr = cfg?.arrayEnabled !== null && cfg?.arrayEnabled !== undefined;
+                const rfx = rip ? ensureRipperFx(rip) : null;
+                const fxParts = [];
+                if (rfx?.filter && rfx.filter !== 'none') fxParts.push(rfx.filter);
+                if (rfx?.post?.enabled) fxParts.push('Post');
+                const fxNote = fxParts.join('+');
                 return `
-                <div class="atlas-item-row">
-                  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px">${it.name}</span>
-                  <div style="display:flex;align-items:center;gap:4px">
-                    <input type="number" class="input input-num atl-item-scale" data-id="${it.ripperId}" min="0.25" max="4" step="0.25" value="${cfg?.scale || 1}" style="width:48px;height:20px" title="Scale multiplier" ${cfg?.locked ? 'disabled' : ''} />
-                    <button type="button" class="btn btn-sm atl-item-lock ${cfg?.locked ? 'btn-primary' : ''}" data-id="${it.ripperId}" title="Lock size">${cfg?.locked ? 'Lock' : 'Free'}</button>
-                    <button type="button" class="btn btn-sm atl-item-up" data-idx="${idx}" title="Move earlier">↑</button>
+                <div class="atlas-item-card ${a.selectedPlacementId === it.ripperId ? 'selected-item' : ''}" data-card-rip="${it.ripperId}">
+                  <div class="atlas-item-top">
+                    <span class="atlas-item-title" title="${it.name}">${it.name}</span>
+                    ${fxNote ? `<span class="mono atlas-item-fx-note">${fxNote}</span>` : ''}
+                    <div style="display:flex;align-items:center;gap:2px;flex-shrink:0">
+                      <button type="button" class="btn btn-sm atl-item-arr ${effArr ? 'btn-primary' : ''}" data-id="${it.ripperId}" title="Array tile-repeat X/Y (${isExplicitArr ? 'Per-item override' : 'Inherits global'}; Shift+Click to reset)">${isExplicitArr ? 'Arr*' : 'Arr'}</button>
+                      <button type="button" class="btn btn-sm atl-item-lock ${cfg?.locked ? 'btn-primary' : ''}" data-id="${it.ripperId}" title="Lock size">${cfg?.locked ? 'Lock' : 'Free'}</button>
+                      <button type="button" class="btn btn-sm atl-item-up" data-idx="${idx}" title="Move earlier">↑</button>
+                    </div>
+                  </div>
+                  <div class="atlas-item-scales">
+                    <label class="atlas-scale-cell" title="Full scale multiplier">
+                      <div class="atlas-scale-top">
+                        <span>Full</span>
+                        <input type="number" class="input input-num atl-item-scale" data-id="${it.ripperId}" min="0.25" max="8" step="0.05" value="${cfg?.scale || 1}" ${cfg?.locked ? 'disabled' : ''} />
+                      </div>
+                      <input type="range" class="slider atl-item-scale-sld" data-id="${it.ripperId}" min="0.25" max="4" step="0.05" value="${Math.min(4, cfg?.scale || 1)}" ${cfg?.locked ? 'disabled' : ''} />
+                    </label>
+                    <label class="atlas-scale-cell" title="Horizontal X scale multiplier">
+                      <div class="atlas-scale-top">
+                        <span>X</span>
+                        <input type="number" class="input input-num atl-item-scalex" data-id="${it.ripperId}" min="0.25" max="8" step="0.05" value="${cfg?.scaleX || 1}" ${cfg?.locked ? 'disabled' : ''} />
+                      </div>
+                      <input type="range" class="slider atl-item-scalex-sld" data-id="${it.ripperId}" min="0.25" max="4" step="0.05" value="${Math.min(4, cfg?.scaleX || 1)}" ${cfg?.locked ? 'disabled' : ''} />
+                    </label>
+                    <label class="atlas-scale-cell" title="Vertical Y scale multiplier">
+                      <div class="atlas-scale-top">
+                        <span>Y</span>
+                        <input type="number" class="input input-num atl-item-scaley" data-id="${it.ripperId}" min="0.25" max="8" step="0.05" value="${cfg?.scaleY || 1}" ${cfg?.locked ? 'disabled' : ''} />
+                      </div>
+                      <input type="range" class="slider atl-item-scaley-sld" data-id="${it.ripperId}" min="0.25" max="4" step="0.05" value="${Math.min(4, cfg?.scaleY || 1)}" ${cfg?.locked ? 'disabled' : ''} />
+                    </label>
                   </div>
                 </div>`;
               })
               .join('')}
           </div>
+        `;
+
+    return `
+      <div class="atlas-workspace">
+        <div class="atlas-sidebar">
+          <div class="atlas-subtab-bar">
+            <div class="segmented-control" style="flex:1">
+              <button type="button" class="seg-btn ${subTab === 'packing' ? 'active' : ''}" data-atl-subtab="packing">Packing</button>
+              <button type="button" class="seg-btn ${subTab === 'fx' ? 'active' : ''}" data-atl-subtab="fx">FX &amp; Shaders</button>
+            </div>
+            <button type="button" class="btn btn-sm ${fx.floating ? 'btn-primary' : ''}" id="atl-float-fx" title="${fx.floating ? 'Dock FX window back into sidebar' : 'Float FX &amp; Shaders in movable window'}">
+              ${fx.floating ? ICONS.dock : ICONS.popout}
+            </button>
+          </div>
+          ${sidebarBody}
         </div>
         <div class="nav-preview-shell">
           ${this._renderNavPreviewToolbar('atl', 'atlas-status-readout', this._formatAtlasStatus())}
@@ -546,6 +676,15 @@ export class BottomPanelUI {
       { passive: false }
     );
 
+    const safeSetPointerCapture = (target, pointerId) => {
+      if (!target || !target.isConnected || pointerId == null) return;
+      try {
+        target.setPointerCapture(pointerId);
+      } catch {
+        // Ignore InvalidStateError for synthetic, canceled, or non-active pointerIds
+      }
+    };
+
     stageEl.addEventListener('pointerdown', (e) => {
       const isPanGesture = e.button === 1 || (e.button === 0 && (view.panMode || shortcuts.spacePressed));
       if (isPanGesture) {
@@ -557,7 +696,7 @@ export class BottomPanelUI {
           origPanX: view.panX,
           origPanY: view.panY,
         };
-        stageEl.setPointerCapture(e.pointerId);
+        safeSetPointerCapture(stageEl, e.pointerId);
         syncCursor(null);
         apply();
         return;
@@ -565,7 +704,7 @@ export class BottomPanelUI {
 
       const pt = clientToCanvas(e.clientX, e.clientY);
       if (onDown && onDown(e, pt, stageEl)) {
-        stageEl.setPointerCapture(e.pointerId);
+        safeSetPointerCapture(stageEl, e.pointerId);
       }
       syncCursor(pt);
     });
@@ -623,7 +762,9 @@ export class BottomPanelUI {
     const se = state.seamlessEditor;
     const offX = Math.round((r.seamless.offsetX || 0) * r.extraction.outWidth);
     const offY = Math.round((r.seamless.offsetY || 0) * r.extraction.outHeight);
-    return `${r.name} · ${r.extraction.outWidth}×${r.extraction.outHeight} · ${se.tileCount}×${se.tileCount} Tiled · Wrap (${offX}px, ${offY}px) · Patches: ${r.clonePatches.length}`;
+    const ripFx = ensureRipperFx(r);
+    const hasFx = se.applyFx && ((ripFx.filter && ripFx.filter !== 'none') || !!ripFx.post?.enabled);
+    return `${r.name} · ${r.extraction.outWidth}×${r.extraction.outHeight} · ${se.tileCount}×${se.tileCount} Tiled · Wrap (${offX}px, ${offY}px) · Patches: ${r.clonePatches.length}${hasFx ? ' · FX' : ''}`;
   }
 
   _updateSeamlessStatus() {
@@ -718,6 +859,12 @@ export class BottomPanelUI {
             <label class="check-label"><input type="checkbox" id="se-guides" ${se.showGuides ? 'checked' : ''} /> Seam Guides</label>
             <label class="check-label"><input type="checkbox" id="se-split" ${se.splitCompare ? 'checked' : ''} /> Split Compare</label>
           </div>
+          <div class="prop-row">
+            <label class="check-label" title="Apply per-texture Overlay Filter &amp; Post-FX inside Seamless Editor &amp; Export">
+              <input type="checkbox" id="se-apply-fx" ${se.applyFx ? 'checked' : ''} /> Live FX &amp; Shader
+            </label>
+            <button type="button" class="btn btn-sm btn-primary" id="se-export-fx" title="Export active Seamless/Final tile (including Live FX when enabled)">Export Tile</button>
+          </div>
           ${
             se.splitCompare
               ? this._renderSeamlessSlider('se-split-ratio', 'Compare Split', Math.round(se.splitRatio * 100), 5, 95, '%')
@@ -783,11 +930,12 @@ export class BottomPanelUI {
 
     const se = state.seamlessEditor;
     const tiles = se.tileCount || 2;
-    const mainSrc =
+    const rawMainSrc =
       se.stagePreview === 'final'
         ? r.cachedStages?.final || r.cachedStages?.seamless || r.cachedStages?.perspective
         : r.cachedStages?.seamless || r.cachedStages?.final || r.cachedStages?.perspective;
-    const rawSrc = r.cachedStages?.perspective || mainSrc;
+    const rawSrc = r.cachedStages?.perspective || rawMainSrc;
+    const mainSrc = rawMainSrc && se.applyFx ? applyRipperFxToCanvas(rawMainSrc, ensureRipperFx(r)) : rawMainSrc;
 
     if (!mainSrc) {
       canvas.width = 256;
@@ -1212,6 +1360,8 @@ export class BottomPanelUI {
             }
             for (const c of gizmo.corners) {
               if (Math.hypot(pt.x - c.x, pt.y - c.y) <= handleTol) {
+                const itemCfg = state.atlas.items.find((x) => x.ripperId === sel.ripperId);
+                const prevOv = state.atlas.manualOverrides?.[sel.ripperId];
                 this._atlasDrag = {
                   mode: 'scale',
                   placement: sel,
@@ -1220,6 +1370,8 @@ export class BottomPanelUI {
                   origH: sel.innerH,
                   origX: sel.x,
                   origY: sel.y,
+                  origTileScaleX: prevOv?.tileScaleX ?? itemCfg?.tileScaleX ?? 1,
+                  origTileScaleY: prevOv?.tileScaleY ?? itemCfg?.tileScaleY ?? 1,
                   startDist: Math.max(4, Math.hypot(pt.x - gizmo.center.x, pt.y - gizmo.center.y)),
                   startDx: Math.max(4, Math.abs(pt.x - gizmo.center.x)),
                   startDy: Math.max(4, Math.abs(pt.y - gizmo.center.y)),
@@ -1241,6 +1393,10 @@ export class BottomPanelUI {
 
         if (hit) {
           state.atlas.selectedPlacementId = hit.ripperId;
+          state.atlas.fx.selectedItemId = hit.ripperId;
+          this.el.querySelectorAll('.atlas-item-card').forEach((card) => {
+            card.classList.toggle('selected-item', card.dataset.cardRip === hit.ripperId);
+          });
           this._atlasDrag = {
             mode: 'move',
             placement: hit,
@@ -1249,10 +1405,12 @@ export class BottomPanelUI {
             origY: hit.y,
           };
           atlasManager.renderAtlasCanvases();
+          events.emit('atlas:fxUiSync');
           return true;
         }
 
         state.atlas.selectedPlacementId = null;
+        this.el.querySelectorAll('.atlas-item-card').forEach((card) => card.classList.remove('selected-item'));
         atlasManager.activeGuides = [];
         atlasManager.renderAtlasCanvases();
         return false;
@@ -1320,14 +1478,30 @@ export class BottomPanelUI {
           p.packedH = Math.round(newW * sin + newH * cos) + pad * 2;
           p.x = Math.round(d.center.x - p.packedW / 2);
           p.y = Math.round(d.center.y - p.packedH / 2);
+
+          const itemCfg = state.atlas.items.find((x) => x.ripperId === p.ripperId);
+          const effMode = itemCfg?.gizmoScaleMode || state.atlas.gizmoScaleMode || 'both';
+          if (effMode === 'both') {
+            const rx = newW / Math.max(1, d.origW);
+            const ry = newH / Math.max(1, d.origH);
+            const nextTx = Math.max(0.25, Math.min(6, (d.origTileScaleX || 1) * Math.sqrt(rx)));
+            const nextTy = Math.max(0.25, Math.min(6, (d.origTileScaleY || 1) * Math.sqrt(ry)));
+            if (itemCfg) {
+              itemCfg.tileScaleX = nextTx;
+              itemCfg.tileScaleY = nextTy;
+            }
+          }
         }
 
+        const itemCfgNow = state.atlas.items.find((x) => x.ripperId === p.ripperId);
         state.atlas.manualOverrides[p.ripperId] = {
           x: p.x,
           y: p.y,
           innerW: p.innerW,
           innerH: p.innerH,
           angleDeg: p.angleDeg || 0,
+          tileScaleX: itemCfgNow?.tileScaleX ?? 1,
+          tileScaleY: itemCfgNow?.tileScaleY ?? 1,
         };
         atlasManager.renderAtlasCanvases();
       },
@@ -1412,6 +1586,32 @@ export class BottomPanelUI {
         atlasManager.rebuildAtlas({ clearManual });
         this.render();
       };
+
+      this.el.querySelectorAll('[data-atl-subtab]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const targetTab = btn.dataset.atlSubtab;
+          if (state.atlas.fx.floating && targetTab === 'fx') {
+            atlasFxWindow.close({ dock: true });
+            return;
+          }
+          state.atlas.fx.subTab = targetTab;
+          this.render();
+        });
+      });
+
+      this.el.querySelector('#atl-float-fx')?.addEventListener('click', () => {
+        if (state.atlas.fx.floating) {
+          atlasFxWindow.close({ dock: true });
+        } else {
+          atlasFxWindow.open();
+        }
+      });
+
+      const fxDockHost = this.el.querySelector('#atl-fx-dock-host');
+      if (fxDockHost) {
+        wireAtlasFxHandlers(fxDockHost, 'dfx', () => this._syncDockedAtlasFx());
+      }
+
       this.el.querySelector('#atl-rebuild')?.addEventListener('click', () => rebuild(true));
       this.el.querySelector('#atl-algo')?.addEventListener('change', (e) => {
         state.atlas.algorithm = e.target.value;
@@ -1449,6 +1649,13 @@ export class BottomPanelUI {
       this.el.querySelector('#atl-auto')?.addEventListener('change', (e) => {
         state.atlas.autoSize = e.target.checked;
         rebuild(true);
+      });
+      this.el.querySelector('#atl-array')?.addEventListener('change', (e) => {
+        state.atlas.arrayMode = e.target.checked;
+        atlasManager.renderAtlasCanvases();
+        this.render();
+        history.push(state.atlas.arrayMode ? 'Enable Atlas Array Extend' : 'Disable Atlas Array Extend');
+        projectManager.scheduleAutosave();
       });
       this.el.querySelector('#atl-gizmo')?.addEventListener('change', (e) => {
         state.atlas.freeMoveGizmo = e.target.checked;
@@ -1493,16 +1700,130 @@ export class BottomPanelUI {
       this.el.querySelector('#atl-exp-json')?.addEventListener('click', () => exportAtlasMetadata());
       this.el.querySelector('#atl-exp-zip')?.addEventListener('click', () => exportAtlasZipPackage('png', 0.92));
 
+      this.el.querySelectorAll('.atl-item-arr').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          const cfg = state.atlas.items.find((x) => x.ripperId === btn.dataset.id);
+          if (!cfg) return;
+          if (e.shiftKey) {
+            cfg.arrayEnabled = null;
+          } else {
+            const currentEff =
+              cfg.arrayEnabled !== null && cfg.arrayEnabled !== undefined
+                ? !!cfg.arrayEnabled
+                : !!state.atlas.arrayMode;
+            cfg.arrayEnabled = !currentEff;
+          }
+          atlasManager.renderAtlasCanvases();
+          this.render();
+          projectManager.scheduleAutosave();
+        });
+      });
+
       this.el.querySelectorAll('.atl-item-scale').forEach((inp) => {
         inp.addEventListener('change', () => {
           const cfg = state.atlas.items.find((x) => x.ripperId === inp.dataset.id);
           if (cfg) {
-            cfg.scale = Math.max(0.25, Math.min(4, Number(inp.value) || 1));
+            cfg.scale = Math.max(0.25, Math.min(8, Number(inp.value) || 1));
+            cfg.customW = null;
+            cfg.customH = null;
             delete state.atlas.manualOverrides[inp.dataset.id];
             rebuild(false);
           }
         });
       });
+      this.el.querySelectorAll('.atl-item-scalex').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          const cfg = state.atlas.items.find((x) => x.ripperId === inp.dataset.id);
+          if (cfg) {
+            cfg.scaleX = Math.max(0.25, Math.min(8, Number(inp.value) || 1));
+            cfg.customW = null;
+            cfg.customH = null;
+            delete state.atlas.manualOverrides[inp.dataset.id];
+            rebuild(false);
+          }
+        });
+      });
+      this.el.querySelectorAll('.atl-item-scaley').forEach((inp) => {
+        inp.addEventListener('change', () => {
+          const cfg = state.atlas.items.find((x) => x.ripperId === inp.dataset.id);
+          if (cfg) {
+            cfg.scaleY = Math.max(0.25, Math.min(8, Number(inp.value) || 1));
+            cfg.customW = null;
+            cfg.customH = null;
+            delete state.atlas.manualOverrides[inp.dataset.id];
+            rebuild(false);
+          }
+        });
+      });
+
+      const bindItemScaleSlider = (cls, numCls, prop) => {
+        this.el.querySelectorAll(`.${cls}`).forEach((sld) => {
+          sld.addEventListener('input', () => {
+            const cfg = state.atlas.items.find((x) => x.ripperId === sld.dataset.id);
+            if (!cfg) return;
+            const v = Math.max(0.25, Math.min(4, Number(sld.value) || 1));
+            cfg[prop] = v;
+            cfg.customW = null;
+            cfg.customH = null;
+            delete state.atlas.manualOverrides[sld.dataset.id];
+            const num = this.el.querySelector(`.${numCls}[data-id="${sld.dataset.id}"]`);
+            if (num) num.value = String(v);
+            atlasManager.rebuildAtlas({ clearManual: false });
+          });
+          sld.addEventListener('change', () => {
+            projectManager.scheduleAutosave();
+          });
+        });
+      };
+      bindItemScaleSlider('atl-item-scale-sld', 'atl-item-scale', 'scale');
+      bindItemScaleSlider('atl-item-scalex-sld', 'atl-item-scalex', 'scaleX');
+      bindItemScaleSlider('atl-item-scaley-sld', 'atl-item-scaley', 'scaleY');
+
+      const bindGlobalArraySlider = (id, prop) => {
+        const sld = this.el.querySelector(`#${id}`);
+        const valEl = this.el.querySelector(`#${id}-val`);
+        if (!sld) return;
+        sld.addEventListener('input', () => {
+          const v = Math.max(0.25, Math.min(4, Number(sld.value) || 1));
+          state.atlas[prop] = v;
+          if (valEl) valEl.textContent = `${v.toFixed(2)}×`;
+          atlasManager.rebuildAtlas({ clearManual: true });
+        });
+        sld.addEventListener('change', () => {
+          history.push(`Adjust Atlas ${prop}`);
+          projectManager.scheduleAutosave();
+        });
+      };
+      bindGlobalArraySlider('atl-arr-full', 'arrayScale');
+      bindGlobalArraySlider('atl-arr-x', 'arrayScaleX');
+      bindGlobalArraySlider('atl-arr-y', 'arrayScaleY');
+
+      this.el.querySelector('#atl-arr-reset')?.addEventListener('click', () => {
+        state.atlas.arrayScale = 1;
+        state.atlas.arrayScaleX = 1;
+        state.atlas.arrayScaleY = 1;
+        state.atlas.manualOverrides = {};
+        for (const it of state.atlas.items) {
+          it.tileScaleX = 1;
+          it.tileScaleY = 1;
+        }
+        rebuild(false);
+        this.render();
+      });
+
+      this.el.querySelectorAll('[data-atl-gmode]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.atlas.gizmoScaleMode = btn.dataset.atlGmode;
+          if (state.atlas.selectedPlacementId) {
+            const it = state.atlas.items.find((x) => x.ripperId === state.atlas.selectedPlacementId);
+            if (it) it.gizmoScaleMode = btn.dataset.atlGmode;
+          }
+          atlasManager.renderAtlasCanvases();
+          this.render();
+          projectManager.scheduleAutosave();
+        });
+      });
+
       this.el.querySelectorAll('.atl-item-lock').forEach((btn) => {
         btn.addEventListener('click', () => {
           const cfg = state.atlas.items.find((x) => x.ripperId === btn.dataset.id);
@@ -1584,6 +1905,28 @@ export class BottomPanelUI {
       this.el.querySelector('#se-guides')?.addEventListener('change', (e) => {
         se.showGuides = e.target.checked;
         this._drawSeamlessEditorPreview();
+      });
+      this.el.querySelector('#se-apply-fx')?.addEventListener('change', (e) => {
+        se.applyFx = e.target.checked;
+        this._drawSeamlessEditorPreview();
+        this._updateSeamlessStatus();
+        projectManager.scheduleAutosave();
+      });
+      this.el.querySelector('#se-export-fx')?.addEventListener('click', async () => {
+        const rawSrc =
+          se.stagePreview === 'final'
+            ? r.cachedStages?.final || r.cachedStages?.seamless || r.cachedStages?.perspective
+            : r.cachedStages?.seamless || r.cachedStages?.final || r.cachedStages?.perspective;
+        if (!rawSrc) {
+          events.emit('toast', { type: 'warning', message: 'Seamless texture is not processed yet.' });
+          return;
+        }
+        const outCanvas = se.applyFx ? applyRipperFxToCanvas(rawSrc, ensureRipperFx(r)) : rawSrc;
+        const blob = await canvasToBlob(outCanvas, 'png', 0.92);
+        const safeName = r.name.replace(/[^a-z0-9_\-]+/gi, '_');
+        const fname = `${safeName}_${se.stagePreview}${se.applyFx ? '_fx' : ''}.png`;
+        triggerBlobDownload(blob, fname);
+        events.emit('toast', { type: 'success', message: `Exported ${fname} (${outCanvas.width}×${outCanvas.height})` });
       });
       this.el.querySelector('#se-split')?.addEventListener('change', (e) => {
         se.splitCompare = e.target.checked;

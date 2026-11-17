@@ -1,5 +1,5 @@
 // Pure-JS zero-dependency ZIP archive writer (CRC-32 + Store) & JSON Project Export/Import
-import { state, setActiveImage, setTheme } from '../core/app-state.js';
+import { state, setActiveImage, setTheme, createDefaultAtlasPostFx, createDefaultRipperFx } from '../core/app-state.js';
 import { events } from '../core/event-manager.js';
 import { history } from '../core/history-manager.js';
 import { projectManager } from '../core/project-manager.js';
@@ -137,22 +137,59 @@ export async function restoreProjectPayload(payload) {
     state.images.push(srcImg);
   }
 
-  state.rippers = (payload.rippers || []).map((r) => ({
-    ...r,
-    cachedStages: {
-      original: null,
-      perspective: null,
-      seamless: null,
-      final: null,
-      thumbnailUrl: '',
-    },
-  }));
+  state.rippers = (payload.rippers || []).map((r) => {
+    const defFx = createDefaultRipperFx();
+    return {
+      ...r,
+      previewTransform: {
+        offsetU: 0,
+        offsetV: 0,
+        repeatX: 1,
+        repeatY: 1,
+        applyFx: true,
+        ...(r.previewTransform || {}),
+      },
+      fx: {
+        ...defFx,
+        ...(r.fx || {}),
+        post: {
+          ...defFx.post,
+          ...(r.fx?.post || {}),
+        },
+      },
+      cachedStages: {
+        original: null,
+        perspective: null,
+        seamless: null,
+        final: null,
+        thumbnailUrl: '',
+      },
+    };
+  });
+
+  if (payload.seamlessEditorFx !== undefined) {
+    state.seamlessEditor.applyFx = !!payload.seamlessEditorFx;
+  }
 
   if (payload.atlas) {
-    Object.assign(state.atlas, payload.atlas);
+    const prevFx = state.atlas.fx;
+    const { fx: savedFx, ...restAtlas } = payload.atlas;
+    Object.assign(state.atlas, restAtlas);
+    state.atlas.arrayScale = state.atlas.arrayScale ?? 1;
+    state.atlas.arrayScaleX = state.atlas.arrayScaleX ?? 1;
+    state.atlas.arrayScaleY = state.atlas.arrayScaleY ?? 1;
+    state.atlas.gizmoScaleMode = state.atlas.gizmoScaleMode || 'both';
     state.atlas.manualOverrides = payload.atlas.manualOverrides ? { ...payload.atlas.manualOverrides } : {};
     state.atlas.selectedPlacementId = null;
     state.atlas.packedResult = null;
+    state.atlas.fx = {
+      ...prevFx,
+      ...(savedFx || {}),
+      post: {
+        ...createDefaultAtlasPostFx(),
+        ...(savedFx?.post || {}),
+      },
+    };
   }
 
   setActiveImage(payload.activeImageId || state.images[0]?.id || null);
